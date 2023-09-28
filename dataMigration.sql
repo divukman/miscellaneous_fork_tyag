@@ -1,3 +1,16 @@
+
+CREATE OR REPLACE FUNCTION isnumeric(text) RETURNS BOOLEAN AS $$
+DECLARE x numeric ;
+BEGIN
+    x = $1::numeric;
+    RETURN TRUE;
+EXCEPTION WHEN others THEN
+    RETURN FALSE;
+END;
+$$
+STRICT
+LANGUAGE plpgsql IMMUTABLE;
+
 DROP FUNCTION IF EXISTS blob_write(bytea);
 DROP FUNCTION IF EXISTS migratedata(text[]);
 
@@ -71,21 +84,26 @@ BEGIN
 		_record_col = format('%L',_value_json->>_col);
 
 		RAISE INFO 'Value going to be replaced is %', _record_col;
+		RAISE INFO 'VALUE ISA NUMBER %', isnumeric( _value_json->>_col);
+	
+	
+	if isnumeric( _value_json->>_col) then
+	 _oid = _value_json->>_col;
+	else
+	  EXECUTE 'SELECT blob_write(decode( $1,''escape''))' INTO _oid USING _record_col;
+	END if;
 
-		EXECUTE 'SELECT blob_write(decode( $1,''escape''))' INTO _oid USING _record_col;
-
+ 	
 		RAISE INFO 'GENERATED OID is % for text %', _oid, _record_col;
-		
 		_update_query := format('UPDATE %I SET %I = %s WHERE %I=%s' , _tbl, _col_tmp,_oid,_col,_record_col);
-
 		RAISE INFO 'Update Query is %',_update_query;
-		
 		EXECUTE _update_query;
+		
 		
 	END LOOP;
 
-	EXECUTE format('ALTER TABLE %I DROP COLUMN %I',_tbl,_col);
-	EXECUTE format('ALTER TABLE %I RENAME %I TO %I',_tbl,_col_tmp,_col);
+	 EXECUTE format('ALTER TABLE %I DROP COLUMN %I',_tbl,_col);
+	 EXECUTE format('ALTER TABLE %I RENAME %I TO %I',_tbl,_col_tmp,_col);
 		
     END LOOP;
 
@@ -94,4 +112,4 @@ END
 $BODY$
 LANGUAGE plpgsql;
 -- provide tables names as below
-SELECT migratedata('tablename1', 'tablename2');
+SELECT migratedata('notes');
